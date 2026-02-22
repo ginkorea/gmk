@@ -12,6 +12,8 @@
 #include "pmm.h"
 #include "boot_alloc.h"
 #include "paging.h"
+#include "vmm.h"
+#include "pci.h"
 #include "lapic.h"
 #include "smp.h"
 
@@ -109,7 +111,13 @@ void _kstart(void) {
         cpu_count = smp_init((void *)smp_req.response);
     }
 
-    /* 10. Hand off to kernel main */
+    /* 10. Virtual memory manager (starts with BSP only; cpu_count updated later) */
+    vmm_init();
+
+    /* 11. PCI bus scan */
+    pci_init();
+
+    /* 12. Hand off to kernel main */
     kmain(cpu_count);
 
     /* Should never reach here */

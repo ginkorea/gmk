@@ -4,6 +4,7 @@
 #include "idt.h"
 #include "lapic.h"
 #include "serial.h"
+#include "vmm.h"
 
 struct idt_entry {
     uint16_t offset_lo;
@@ -61,11 +62,33 @@ void idt_set_shutdown_timer(uint32_t ticks, _Atomic(bool) *flag) {
     timer_count = 0;
 }
 
+/* Forward declaration for TLB shootdown handler */
+extern void vmm_tlb_shootdown_handler(void);
+
 /* C handler called from isr_common */
 void isr_handler(interrupt_frame_t *frame) {
     uint64_t vec = frame->vector;
 
     if (vec < 32) {
+        /* Page fault: try demand paging first */
+        if (vec == 14) {
+            uint64_t cr2;
+            __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+
+            /* Not-present fault (bit 0 of error_code = 0) in heap range? */
+            if (!(frame->error_code & 1) && vmm_demand_page(cr2) == 0) {
+                return; /* page mapped, resume execution */
+            }
+
+            /* Not a demand-page fault — fall through to crash dump */
+            kprintf("\n!!! PAGE FAULT !!!\n");
+            kprintf("  CR2: 0x%lx  Error: 0x%lx\n", cr2, frame->error_code);
+            kprintf("  RIP: 0x%lx  RSP: 0x%lx\n", frame->rip, frame->rsp);
+            kprintf("  SYSTEM HALTED.\n");
+            for (;;) __asm__ volatile("cli; hlt");
+        }
+
+        /* All other exceptions: dump and halt */
         kprintf("\n!!! EXCEPTION %lu: %s\n", vec,
                 vec < 32 ? exception_names[vec] : "Unknown");
         kprintf("  Error code: 0x%lx\n", frame->error_code);
@@ -75,15 +98,6 @@ void isr_handler(interrupt_frame_t *frame) {
         kprintf("  RCX: 0x%lx  RDX: 0x%lx\n", frame->rcx, frame->rdx);
         kprintf("  RSI: 0x%lx  RDI: 0x%lx\n", frame->rsi, frame->rdi);
         kprintf("  RBP: 0x%lx  RFLAGS: 0x%lx\n", frame->rbp, frame->rflags);
-
-        /* Read CR2 for page faults */
-        if (vec == 14) {
-            uint64_t cr2;
-            __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
-            kprintf("  CR2: 0x%lx\n", cr2);
-        }
-
-        /* Halt on exceptions */
         kprintf("  SYSTEM HALTED.\n");
         for (;;) __asm__ volatile("cli; hlt");
     }
@@ -95,6 +109,11 @@ void isr_handler(interrupt_frame_t *frame) {
             __atomic_store_n(shutdown_flag, 0, __ATOMIC_RELEASE);
             shutdown_ticks = 0; /* one-shot */
         }
+    }
+
+    /* TLB shootdown IPI (vector 0xFD) */
+    if (vec == 0xFD) {
+        vmm_tlb_shootdown_handler();
     }
 
     /* IRQs 32-255: send EOI to LAPIC */

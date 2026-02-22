@@ -74,6 +74,8 @@ KERN_ARCH_C := $(ARCH)/entry.c \
                $(ARCH)/memops.c \
                $(ARCH)/boot_alloc.c \
                $(ARCH)/paging.c \
+               $(ARCH)/vmm.c \
+               $(ARCH)/pci.c \
                $(ARCH)/lapic.c \
                $(ARCH)/smp.c \
                $(ARCH)/kmain.c
@@ -81,11 +83,17 @@ KERN_ARCH_C := $(ARCH)/entry.c \
 KERN_ARCH_S := $(ARCH)/idt_stubs.S \
                $(ARCH)/ctx_switch.S
 
+# Kernel driver sources
+DRIVERS := drivers
+KERN_DRIVER_C := $(DRIVERS)/virtio/virtio_pci.c \
+                 $(DRIVERS)/virtio/virtio_blk.c
+
 # Kernel uses the same src/*.c but compiled with KERN_CFLAGS
 KERN_SRC_OBJS := $(patsubst $(SRC)/%.c,$(KERN_BUILD)/%.o,$(SRCS))
 KERN_ARCH_C_OBJS := $(patsubst $(ARCH)/%.c,$(KERN_BUILD)/arch_%.o,$(KERN_ARCH_C))
 KERN_ARCH_S_OBJS := $(patsubst $(ARCH)/%.S,$(KERN_BUILD)/arch_%.o,$(KERN_ARCH_S))
-KERN_ALL_OBJS := $(KERN_SRC_OBJS) $(KERN_ARCH_C_OBJS) $(KERN_ARCH_S_OBJS)
+KERN_DRV_OBJS := $(KERN_BUILD)/drv_virtio_pci.o $(KERN_BUILD)/drv_virtio_blk.o
+KERN_ALL_OBJS := $(KERN_SRC_OBJS) $(KERN_ARCH_C_OBJS) $(KERN_ARCH_S_OBJS) $(KERN_DRV_OBJS)
 
 KERNEL_ELF := $(BUILD)/gmk_kernel.elf
 KERNEL_ISO := $(BUILD)/gmk.iso
@@ -163,6 +171,12 @@ $(KERN_BUILD)/arch_%.o: $(ARCH)/%.c | $(KERN_BUILD)
 $(KERN_BUILD)/arch_%.o: $(ARCH)/%.S | $(KERN_BUILD)
 	$(KERN_CC) $(KERN_CFLAGS) -c $< -o $@
 
+$(KERN_BUILD)/drv_virtio_pci.o: $(DRIVERS)/virtio/virtio_pci.c | $(KERN_BUILD)
+	$(KERN_CC) $(KERN_CFLAGS) -c $< -o $@
+
+$(KERN_BUILD)/drv_virtio_blk.o: $(DRIVERS)/virtio/virtio_blk.c | $(KERN_BUILD)
+	$(KERN_CC) $(KERN_CFLAGS) -c $< -o $@
+
 kernel: $(KERNEL_ELF)
 
 $(KERNEL_ELF): $(KERN_ALL_OBJS)
@@ -183,18 +197,14 @@ iso: $(KERNEL_ELF)
 		-boot-load-size 4 -boot-info-table \
 		--protective-msdos-label $(BUILD)/iso -o $(KERNEL_ISO)
 
-# ── Run in QEMU ─────────────────────────────────────────────
-run: iso
-	qemu-system-x86_64 \
-		-cdrom $(KERNEL_ISO) \
-		-serial stdio \
-		-smp 4 \
-		-m 256M \
-		-no-reboot \
-		-no-shutdown \
-		-display none
+# ── Test disk image ─────────────────────────────────────────
+DISK_IMG := $(BUILD)/test.img
 
-run-debug: iso
+$(DISK_IMG): | $(BUILD)
+	dd if=/dev/zero of=$@ bs=512 count=2048 2>/dev/null
+
+# ── Run in QEMU ─────────────────────────────────────────────
+run: iso $(DISK_IMG)
 	qemu-system-x86_64 \
 		-cdrom $(KERNEL_ISO) \
 		-serial stdio \
@@ -203,6 +213,20 @@ run-debug: iso
 		-no-reboot \
 		-no-shutdown \
 		-display none \
+		-device virtio-blk-pci,drive=d0 \
+		-drive id=d0,file=$(DISK_IMG),format=raw,if=none
+
+run-debug: iso $(DISK_IMG)
+	qemu-system-x86_64 \
+		-cdrom $(KERNEL_ISO) \
+		-serial stdio \
+		-smp 4 \
+		-m 256M \
+		-no-reboot \
+		-no-shutdown \
+		-display none \
+		-device virtio-blk-pci,drive=d0 \
+		-drive id=d0,file=$(DISK_IMG),format=raw,if=none \
 		-S -s
 
 # ── Clean ────────────────────────────────────────────────────
