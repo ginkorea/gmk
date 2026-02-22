@@ -78,6 +78,20 @@ static int str_eq(const char *a, const char *b) {
     return *a == *b;
 }
 
+static int str_len(const char *s) {
+    int n = 0;
+    while (s[n]) n++;
+    return n;
+}
+
+/* Print string left-padded with spaces to fill `width` columns */
+static void print_padded(const char *s, int width) {
+    kprintf("%s", s);
+    int len = str_len(s);
+    for (int i = len; i < width; i++)
+        serial_putc(' ');
+}
+
 /* ── Command handlers ────────────────────────────────────────────── */
 
 typedef struct {
@@ -130,7 +144,9 @@ static const cli_cmd_t commands[] = {
 static void cmd_help(int argc, char **argv) {
     (void)argc; (void)argv;
     for (uint32_t i = 0; i < N_COMMANDS; i++) {
-        kprintf("  %-22s %s\n", commands[i].name, commands[i].help);
+        kprintf("  ");
+        print_padded(commands[i].name, 12);
+        kprintf("%s\n", commands[i].help);
     }
 }
 
@@ -156,12 +172,12 @@ static void cmd_cpu(int argc, char **argv) {
 
 static void cmd_mem(int argc, char **argv) {
     (void)argc; (void)argv;
-    size_t total = pmm_total_count();
-    size_t free  = pmm_free_count();
-    size_t used  = total - free;
+    size_t usable = pmm_usable_count();
+    size_t free   = pmm_free_count();
+    size_t used   = usable - free;
     kprintf("Physical memory:\n");
-    kprintf("  Total:  %lu pages (%lu MB)\n",
-            (unsigned long)total, (unsigned long)(total * 4 / 1024));
+    kprintf("  Usable: %lu pages (%lu MB)\n",
+            (unsigned long)usable, (unsigned long)(usable * 4 / 1024));
     kprintf("  Free:   %lu pages (%lu MB)\n",
             (unsigned long)free, (unsigned long)(free * 4 / 1024));
     kprintf("  Used:   %lu pages (%lu MB)\n",
@@ -419,7 +435,9 @@ static void cmd_metrics(int argc, char **argv) {
     kprintf("Global metrics:\n");
     for (uint32_t i = 0; i < 13; i++) {
         uint64_t val = gmk_metric_get(&cli_kernel->metrics, i);
-        kprintf("  %-20s %lu\n", metric_names[i], (unsigned long)val);
+        kprintf("  ");
+        print_padded(metric_names[i], 20);
+        kprintf("%lu\n", (unsigned long)val);
     }
 }
 
@@ -430,8 +448,11 @@ static void cmd_uptime(int argc, char **argv) {
     uint64_t ticks = idt_get_timer_count();
     uint64_t secs = ticks / 1000;
     uint64_t ms   = ticks % 1000;
-    kprintf("Uptime: %lu.%03lu s (%lu ticks)\n",
-            (unsigned long)secs, (unsigned long)ms, (unsigned long)ticks);
+    /* Manual zero-pad for ms (kprintf lacks width specifiers) */
+    kprintf("Uptime: %lu.", (unsigned long)secs);
+    if (ms < 100) serial_putc('0');
+    if (ms < 10)  serial_putc('0');
+    kprintf("%lu s (%lu ticks)\n", (unsigned long)ms, (unsigned long)ticks);
 }
 
 /* ── halt ────────────────────────────────────────────────────────── */

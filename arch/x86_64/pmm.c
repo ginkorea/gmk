@@ -9,7 +9,8 @@
 #define MAX_PAGES (1024 * 1024) /* up to 4GB */
 
 static uint64_t bitmap[MAX_PAGES / 64];
-static size_t   total_pages;
+static size_t   total_pages;    /* address space pages (bitmap size) */
+static size_t   usable_pages;   /* pages initially marked free (actual RAM) */
 static size_t   free_pages;
 static uint64_t highest_addr;
 
@@ -64,6 +65,8 @@ void pmm_init(void *memmap_resp) {
         }
     }
 
+    usable_pages = free_pages;
+
     kprintf("PMM: %lu KB free (%lu pages of %lu total)\n",
             (unsigned long)(free_pages * 4),
             (unsigned long)free_pages,
@@ -112,6 +115,10 @@ size_t pmm_free_count(void) {
 
 size_t pmm_total_count(void) {
     return total_pages;
+}
+
+size_t pmm_usable_count(void) {
+    return usable_pages;
 }
 
 uint64_t pmm_find_contiguous(size_t min_size, size_t *out_size) {

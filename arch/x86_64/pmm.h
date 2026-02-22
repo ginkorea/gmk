@@ -14,6 +14,7 @@ uint64_t pmm_alloc_pages(size_t count);
 void     pmm_free_pages(uint64_t addr, size_t count);
 size_t   pmm_free_count(void);
 size_t   pmm_total_count(void);
+size_t   pmm_usable_count(void);
 
 /* Find the largest contiguous usable region >= min_size bytes.
    Returns physical address, or 0 on failure. Sets *out_size. */
