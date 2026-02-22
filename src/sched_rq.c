@@ -5,7 +5,9 @@
  * Each weight-batch pops that many tasks before moving to the next priority.
  */
 #include "gmk/sched.h"
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 int gmk_rq_init(gmk_rq_t *rq, uint32_t cap_per_queue) {
     if (!rq) return -1;

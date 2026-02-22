@@ -2,7 +2,9 @@
  * GMK/cpu — Atomic metric counters
  */
 #include "gmk/metrics.h"
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 int gmk_metrics_init(gmk_metrics_t *m, uint32_t n_tenants) {
     if (!m || n_tenants == 0 || n_tenants > GMK_MAX_TENANTS)

@@ -12,7 +12,7 @@
 #define GMK_ALLOC_H
 
 #include "platform.h"
-#include <pthread.h>
+#include "lock.h"
 
 /* ── Forward typedefs ────────────────────────────────────────── */
 typedef struct gmk_arena gmk_arena_t;
@@ -37,7 +37,7 @@ typedef struct {
     uint32_t        high_water; /* peak alloc_count      */
     int32_t        *free_list;  /* free list indices (-1 = end) */
     int32_t         free_head;  /* index of first free slot */
-    pthread_mutex_t lock;
+    gmk_lock_t lock;
 } gmk_slab_t;
 
 int    gmk_slab_init(gmk_slab_t *s, void *mem, size_t mem_size, uint32_t obj_size);

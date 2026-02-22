@@ -12,7 +12,7 @@
 #include "types.h"
 #include "ring_mpmc.h"
 #include "sched.h"
-#include <pthread.h>
+#include "lock.h"
 
 /* ── Channel subscriber ──────────────────────────────────────── */
 typedef struct {
@@ -35,7 +35,7 @@ typedef struct {
     _Atomic(bool)      open;      /* atomic: checked without lock on emit fast-path */
     _Atomic(uint64_t)  emit_count;
     _Atomic(uint64_t)  drop_count;
-    pthread_mutex_t    lock;      /* protects subs[], n_subs, open mutations */
+    gmk_lock_t         lock;      /* protects subs[], n_subs, open mutations */
 } gmk_chan_entry_t;
 
 /* ── Channel registry ────────────────────────────────────────── */

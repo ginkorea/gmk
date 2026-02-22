@@ -2,8 +2,13 @@
  * GMK/cpu — SPSC ring buffer implementation
  */
 #include "gmk/ring_spsc.h"
+
+#ifdef GMK_FREESTANDING
+#include "../../arch/x86_64/boot_alloc.h"
+#else
 #include <stdlib.h>
 #include <string.h>
+#endif
 
 int gmk_ring_spsc_init(gmk_ring_spsc_t *r, uint32_t cap, uint32_t elem_size) {
     if (!r || !gmk_is_power_of_two(cap) || elem_size == 0)
@@ -12,8 +17,13 @@ int gmk_ring_spsc_init(gmk_ring_spsc_t *r, uint32_t cap, uint32_t elem_size) {
     r->cap       = cap;
     r->mask      = cap - 1;
     r->elem_size = elem_size;
+#ifdef GMK_FREESTANDING
+    r->buf       = (uint8_t *)boot_aligned_alloc(GMK_CACHE_LINE,
+                                                  (size_t)cap * elem_size);
+#else
     r->buf       = (uint8_t *)aligned_alloc(GMK_CACHE_LINE,
                                              (size_t)cap * elem_size);
+#endif
     if (!r->buf) return -1;
 
     atomic_init(&r->head, 0);
@@ -38,7 +48,11 @@ int gmk_ring_spsc_init_buf(gmk_ring_spsc_t *r, uint32_t cap,
 
 void gmk_ring_spsc_destroy(gmk_ring_spsc_t *r) {
     if (r && r->buf) {
+#ifdef GMK_FREESTANDING
+        boot_free(r->buf);
+#else
         free(r->buf);
+#endif
         r->buf = NULL;
     }
 }

@@ -4,8 +4,13 @@
  * head/tail, checking the slot's sequence to ensure correctness.
  */
 #include "gmk/ring_mpmc.h"
+
+#ifdef GMK_FREESTANDING
+#include "../../arch/x86_64/boot_alloc.h"
+#else
 #include <stdlib.h>
 #include <string.h>
+#endif
 
 static inline uint32_t cell_stride(uint32_t elem_size) {
     /* cell = 4 bytes (seq) + elem_size, rounded up to 8-byte alignment */
@@ -27,7 +32,11 @@ int gmk_ring_mpmc_init(gmk_ring_mpmc_t *r, uint32_t cap, uint32_t elem_size) {
     r->cell_size = cell_stride(elem_size);
 
     size_t buf_bytes = (size_t)cap * r->cell_size;
+#ifdef GMK_FREESTANDING
+    r->buf = (uint8_t *)boot_aligned_alloc(GMK_CACHE_LINE, buf_bytes);
+#else
     r->buf = (uint8_t *)aligned_alloc(GMK_CACHE_LINE, buf_bytes);
+#endif
     if (!r->buf) return -1;
     memset(r->buf, 0, buf_bytes);
 
@@ -70,7 +79,11 @@ int gmk_ring_mpmc_init_buf(gmk_ring_mpmc_t *r, uint32_t cap,
 
 void gmk_ring_mpmc_destroy(gmk_ring_mpmc_t *r) {
     if (r && r->buf) {
+#ifdef GMK_FREESTANDING
+        boot_free(r->buf);
+#else
         free(r->buf);
+#endif
         r->buf = NULL;
     }
 }

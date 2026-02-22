@@ -54,22 +54,61 @@ TEST_BINS := $(BUILD)/test_ring_spsc \
              $(BUILD)/test_worker \
              $(BUILD)/test_boot
 
+# ── Kernel (freestanding) ────────────────────────────────────
+KERN_CC     := gcc
+KERN_CFLAGS := -std=c11 -Wall -Wextra -Werror -O2 \
+  -ffreestanding -nostdlib -mno-red-zone -mcmodel=kernel \
+  -mno-sse -mno-sse2 -mno-mmx \
+  -DGMK_FREESTANDING -I include -I arch/x86_64
+KERN_LDFLAGS := -nostdlib -static -T arch/x86_64/linker.ld -z max-page-size=0x1000 -Wl,--build-id=none
+
+ARCH     := arch/x86_64
+KERN_BUILD := $(BUILD)/kern
+
+# Kernel arch sources
+KERN_ARCH_C := $(ARCH)/entry.c \
+               $(ARCH)/serial.c \
+               $(ARCH)/gdt.c \
+               $(ARCH)/idt.c \
+               $(ARCH)/pmm.c \
+               $(ARCH)/memops.c \
+               $(ARCH)/boot_alloc.c \
+               $(ARCH)/paging.c \
+               $(ARCH)/lapic.c \
+               $(ARCH)/smp.c \
+               $(ARCH)/kmain.c
+
+KERN_ARCH_S := $(ARCH)/idt_stubs.S \
+               $(ARCH)/ctx_switch.S
+
+# Kernel uses the same src/*.c but compiled with KERN_CFLAGS
+KERN_SRC_OBJS := $(patsubst $(SRC)/%.c,$(KERN_BUILD)/%.o,$(SRCS))
+KERN_ARCH_C_OBJS := $(patsubst $(ARCH)/%.c,$(KERN_BUILD)/arch_%.o,$(KERN_ARCH_C))
+KERN_ARCH_S_OBJS := $(patsubst $(ARCH)/%.S,$(KERN_BUILD)/arch_%.o,$(KERN_ARCH_S))
+KERN_ALL_OBJS := $(KERN_SRC_OBJS) $(KERN_ARCH_C_OBJS) $(KERN_ARCH_S_OBJS)
+
+KERNEL_ELF := $(BUILD)/gmk_kernel.elf
+KERNEL_ISO := $(BUILD)/gmk.iso
+
 # ── Phony targets ────────────────────────────────────────────
-.PHONY: all lib test clean \
+.PHONY: all lib test clean kernel iso run run-debug \
         test-ring test-alloc test-sched test-chan test-module test-worker test-boot
 
 all: lib
 
 lib: $(LIB)
 
-# ── Build object files ───────────────────────────────────────
+# ── Build object files (hosted) ─────────────────────────────
 $(BUILD)/%.o: $(SRC)/%.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD):
 	mkdir -p $(BUILD)
 
-# ── Static library ───────────────────────────────────────────
+$(KERN_BUILD):
+	mkdir -p $(KERN_BUILD)
+
+# ── Static library ──────────────────────────────────────────
 $(LIB): $(OBJS)
 	$(AR) rcs $@ $^
 
@@ -113,6 +152,58 @@ test-worker: $(BUILD)/test_worker
 
 test-boot: $(BUILD)/test_boot
 	$(BUILD)/test_boot
+
+# ── Kernel build (freestanding) ──────────────────────────────
+$(KERN_BUILD)/%.o: $(SRC)/%.c | $(KERN_BUILD)
+	$(KERN_CC) $(KERN_CFLAGS) -c $< -o $@
+
+$(KERN_BUILD)/arch_%.o: $(ARCH)/%.c | $(KERN_BUILD)
+	$(KERN_CC) $(KERN_CFLAGS) -c $< -o $@
+
+$(KERN_BUILD)/arch_%.o: $(ARCH)/%.S | $(KERN_BUILD)
+	$(KERN_CC) $(KERN_CFLAGS) -c $< -o $@
+
+kernel: $(KERNEL_ELF)
+
+$(KERNEL_ELF): $(KERN_ALL_OBJS)
+	$(KERN_CC) $(KERN_LDFLAGS) -o $@ $^
+
+# ── Limine bootloader location ──────────────────────────────
+# Set LIMINE_DIR to wherever limine was built/installed.
+LIMINE_DIR ?= /tmp/limine
+
+# ── ISO (requires xorriso + limine) ─────────────────────────
+iso: $(KERNEL_ELF)
+	@mkdir -p $(BUILD)/iso/boot
+	cp $(KERNEL_ELF) $(BUILD)/iso/boot/gmk_kernel.elf
+	cp $(ARCH)/limine.conf $(BUILD)/iso/boot/limine.conf
+	cp $(LIMINE_DIR)/bin/limine-bios.sys $(BUILD)/iso/boot/
+	cp $(LIMINE_DIR)/bin/limine-bios-cd.bin $(BUILD)/iso/boot/
+	xorriso -as mkisofs -b boot/limine-bios-cd.bin -no-emul-boot \
+		-boot-load-size 4 -boot-info-table \
+		--protective-msdos-label $(BUILD)/iso -o $(KERNEL_ISO)
+
+# ── Run in QEMU ─────────────────────────────────────────────
+run: iso
+	qemu-system-x86_64 \
+		-cdrom $(KERNEL_ISO) \
+		-serial stdio \
+		-smp 4 \
+		-m 256M \
+		-no-reboot \
+		-no-shutdown \
+		-display none
+
+run-debug: iso
+	qemu-system-x86_64 \
+		-cdrom $(KERNEL_ISO) \
+		-serial stdio \
+		-smp 4 \
+		-m 256M \
+		-no-reboot \
+		-no-shutdown \
+		-display none \
+		-S -s
 
 # ── Clean ────────────────────────────────────────────────────
 clean:

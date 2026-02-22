@@ -9,7 +9,9 @@
  */
 #include "gmk/alloc.h"
 #include "gmk/types.h"
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 int gmk_alloc_init(gmk_alloc_t *a, size_t arena_size) {
     if (!a || arena_size < 4096) return -1;

@@ -12,7 +12,7 @@
 #include "types.h"
 #include "ring_spsc.h"
 #include "ring_mpmc.h"
-#include <pthread.h>
+#include "lock.h"
 
 /* ── Ready Queue (RQ): 4 priority sub-queues ─────────────────── */
 typedef struct {
@@ -51,7 +51,7 @@ typedef struct {
     uint32_t          count;
     uint32_t          cap;
     uint32_t          next_seq;
-    pthread_mutex_t   lock;
+    gmk_lock_t        lock;
 } gmk_evq_t;
 
 int  gmk_evq_init(gmk_evq_t *evq, uint32_t cap);

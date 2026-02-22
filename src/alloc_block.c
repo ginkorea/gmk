@@ -4,7 +4,9 @@
  * Each bin is a slab allocator.
  */
 #include "gmk/alloc.h"
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 static int bin_index(uint32_t size) {
     if (size <= GMK_BLOCK_MIN_SIZE) return 0;
@@ -51,14 +53,14 @@ int gmk_block_init(gmk_block_t *b, void *mem, size_t mem_size) {
             memset(&b->bins[i], 0, sizeof(b->bins[i]));
             b->bins[i].capacity = 0;
             b->bins[i].free_head = -1;
-            pthread_mutex_init(&b->bins[i].lock, NULL);
+            gmk_lock_init(&b->bins[i].lock);
         } else {
             if (gmk_slab_init(&b->bins[i], ptr, bin_mem, obj_size) != 0) {
                 /* Treat as empty bin, not a fatal error */
                 memset(&b->bins[i], 0, sizeof(b->bins[i]));
                 b->bins[i].capacity = 0;
                 b->bins[i].free_head = -1;
-                pthread_mutex_init(&b->bins[i].lock, NULL);
+                gmk_lock_init(&b->bins[i].lock);
             }
         }
 
@@ -75,7 +77,7 @@ void gmk_block_destroy(gmk_block_t *b) {
         if (b->bins[i].capacity > 0)
             gmk_slab_destroy(&b->bins[i]);
         else
-            pthread_mutex_destroy(&b->bins[i].lock);
+            gmk_lock_destroy(&b->bins[i].lock);
     }
     b->base = NULL;
 }

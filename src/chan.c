@@ -1,7 +1,7 @@
 /*
  * GMK/cpu — Channel open/emit/sub/close/drain
  *
- * Thread safety: per-channel mutex protects subs[]/n_subs mutations.
+ * Thread safety: per-channel lock protects subs[]/n_subs mutations.
  * The `open` field is _Atomic(bool) for lock-free checks on the fast path.
  * Subscriber list is snapshotted under lock then used lock-free.
  *
@@ -12,7 +12,9 @@
 #include "gmk/alloc.h"
 #include "gmk/trace.h"
 #include "gmk/metrics.h"
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 /* ── Helpers ────────────────────────────────────────────────────── */
 
@@ -21,11 +23,11 @@ static inline bool chan_is_open(gmk_chan_entry_t *ch) {
 }
 
 static void init_chan_lock(gmk_chan_entry_t *ch) {
-    pthread_mutex_init(&ch->lock, NULL);
+    gmk_lock_init(&ch->lock);
 }
 
 static void destroy_chan_lock(gmk_chan_entry_t *ch) {
-    pthread_mutex_destroy(&ch->lock);
+    gmk_lock_destroy(&ch->lock);
 }
 
 /* ── Registry init / destroy ────────────────────────────────────── */
@@ -161,12 +163,12 @@ int gmk_chan_emit(gmk_chan_reg_t *cr, uint32_t chan_id, gmk_task_t *task) {
         bool has_sub = false;
         int  target_worker = -1;
 
-        pthread_mutex_lock(&ch->lock);
+        gmk_lock_acquire(&ch->lock);
         if (ch->n_subs == 1 && ch->subs[0].active) {
             has_sub = true;
             target_worker = ch->subs[0].worker_id;
         }
-        pthread_mutex_unlock(&ch->lock);
+        gmk_lock_release(&ch->lock);
 
         if (has_sub) {
             if (_gmk_enqueue(cr->sched, task, target_worker) == 0) {
@@ -196,9 +198,9 @@ int gmk_chan_emit(gmk_chan_reg_t *cr, uint32_t chan_id, gmk_task_t *task) {
     /* For P2P with subscriber, drain immediately */
     if (ch->mode == GMK_CHAN_P2P) {
         bool has_sub = false;
-        pthread_mutex_lock(&ch->lock);
+        gmk_lock_acquire(&ch->lock);
         has_sub = (ch->n_subs > 0);
-        pthread_mutex_unlock(&ch->lock);
+        gmk_lock_release(&ch->lock);
         if (has_sub)
             gmk_chan_drain(cr, chan_id, 1);
     }
@@ -216,16 +218,16 @@ int gmk_chan_sub(gmk_chan_reg_t *cr, uint32_t chan_id, uint32_t module_id,
     gmk_chan_entry_t *ch = &cr->channels[chan_id];
     if (!chan_is_open(ch)) return GMK_CHAN_CLOSED;
 
-    pthread_mutex_lock(&ch->lock);
+    gmk_lock_acquire(&ch->lock);
 
     /* P2P: only one subscriber allowed */
     if (ch->mode == GMK_CHAN_P2P && ch->n_subs >= 1) {
-        pthread_mutex_unlock(&ch->lock);
+        gmk_lock_release(&ch->lock);
         return GMK_CHAN_ALREADY_BOUND;
     }
 
     if (ch->n_subs >= GMK_MAX_CHAN_SUBS) {
-        pthread_mutex_unlock(&ch->lock);
+        gmk_lock_release(&ch->lock);
         return GMK_FAIL(GMK_ERR_FULL);
     }
 
@@ -234,7 +236,7 @@ int gmk_chan_sub(gmk_chan_reg_t *cr, uint32_t chan_id, uint32_t module_id,
     sub->worker_id = worker_id;
     sub->active    = true;
 
-    pthread_mutex_unlock(&ch->lock);
+    gmk_lock_release(&ch->lock);
     return GMK_OK;
 }
 
@@ -265,12 +267,12 @@ int gmk_chan_drain(gmk_chan_reg_t *cr, uint32_t chan_id, uint32_t limit) {
     gmk_chan_entry_t *ch = &cr->channels[chan_id];
 
     /* Snapshot subscriber list under lock */
-    pthread_mutex_lock(&ch->lock);
+    gmk_lock_acquire(&ch->lock);
     uint32_t n_subs = ch->n_subs;
     gmk_chan_sub_t subs_snap[GMK_MAX_CHAN_SUBS];
     if (n_subs > 0)
         memcpy(subs_snap, ch->subs, n_subs * sizeof(gmk_chan_sub_t));
-    pthread_mutex_unlock(&ch->lock);
+    gmk_lock_release(&ch->lock);
 
     if (n_subs == 0) return 0;
     if (limit == 0) limit = UINT32_MAX;

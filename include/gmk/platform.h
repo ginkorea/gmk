@@ -9,8 +9,13 @@
 #include <stddef.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+
+#ifdef GMK_FREESTANDING
+#include "arch/string.h"
+#else
 #include <string.h>
 #include <time.h>
+#endif
 
 /* ── Cache line ──────────────────────────────────────────────── */
 #define GMK_CACHE_LINE 64

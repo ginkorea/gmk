@@ -15,7 +15,7 @@
 struct gmk_trace {
     gmk_ring_spsc_t  rings[GMK_MAX_TENANTS];  /* per-tenant trace rings */
     uint32_t          level;                    /* global trace level     */
-    float             sample_rate;              /* 0.0..1.0               */
+    uint32_t          sample_threshold;         /* fixed-point: 0..UINT32_MAX */
     uint32_t          prng_state;               /* fast PRNG seed         */
     uint32_t          n_tenants;                /* active tenant count    */
     _Atomic(uint64_t) total_events;
@@ -39,7 +39,8 @@ int  gmk_trace_read(gmk_trace_t *t, uint16_t tenant, gmk_trace_ev_t *ev);
 /* Set global trace level. */
 void gmk_trace_set_level(gmk_trace_t *t, uint32_t level);
 
-/* Set sampling rate (0.0 = none, 1.0 = all). */
+/* Set sampling rate (0.0 = none, 1.0 = all).
+ * Internally converted to fixed-point uint32_t threshold. */
 void gmk_trace_set_sample_rate(gmk_trace_t *t, float rate);
 
 /* Get total events written. */

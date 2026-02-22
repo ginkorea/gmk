@@ -1,10 +1,12 @@
 /*
  * GMK/cpu — Fixed-size slab allocator with free list
- * Mutex-protected. Index-based free list.
+ * Lock-protected. Index-based free list.
  */
 #include "gmk/alloc.h"
 #include <stdlib.h>
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 int gmk_slab_init(gmk_slab_t *s, void *mem, size_t mem_size, uint32_t obj_size) {
     if (!s || !mem || obj_size == 0) return -1;
@@ -33,13 +35,13 @@ int gmk_slab_init(gmk_slab_t *s, void *mem, size_t mem_size, uint32_t obj_size) 
     }
     s->free_list[capacity - 1] = -1; /* end of list */
 
-    pthread_mutex_init(&s->lock, NULL);
+    gmk_lock_init(&s->lock);
     return 0;
 }
 
 void gmk_slab_destroy(gmk_slab_t *s) {
     if (s) {
-        pthread_mutex_destroy(&s->lock);
+        gmk_lock_destroy(&s->lock);
         s->base = NULL;
     }
 }
@@ -47,10 +49,10 @@ void gmk_slab_destroy(gmk_slab_t *s) {
 void *gmk_slab_alloc(gmk_slab_t *s) {
     if (!s) return NULL;
 
-    pthread_mutex_lock(&s->lock);
+    gmk_lock_acquire(&s->lock);
 
     if (s->free_head < 0) {
-        pthread_mutex_unlock(&s->lock);
+        gmk_lock_release(&s->lock);
         return NULL; /* full */
     }
 
@@ -61,7 +63,7 @@ void *gmk_slab_alloc(gmk_slab_t *s) {
     if (count > s->high_water)
         s->high_water = count;
 
-    pthread_mutex_unlock(&s->lock);
+    gmk_lock_release(&s->lock);
 
     return s->base + (size_t)idx * s->obj_size;
 }
@@ -76,13 +78,13 @@ void gmk_slab_free(gmk_slab_t *s, void *ptr) {
     uint32_t idx = (uint32_t)(offset / s->obj_size);
     if (idx >= s->capacity) return;
 
-    pthread_mutex_lock(&s->lock);
+    gmk_lock_acquire(&s->lock);
 
     s->free_list[idx] = s->free_head;
     s->free_head = (int32_t)idx;
     gmk_atomic_sub(&s->alloc_count, 1, memory_order_relaxed);
 
-    pthread_mutex_unlock(&s->lock);
+    gmk_lock_release(&s->lock);
 }
 
 uint32_t gmk_slab_used(const gmk_slab_t *s) {

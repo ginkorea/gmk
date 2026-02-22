@@ -6,8 +6,12 @@
  * Drain limit per check: GMK_EVQ_DRAIN_LIMIT.
  */
 #include "gmk/sched.h"
+#ifdef GMK_FREESTANDING
+#include "../../arch/x86_64/boot_alloc.h"
+#else
 #include <stdlib.h>
 #include <string.h>
+#endif
 
 static inline uint64_t evq_key(const gmk_task_t *t, uint32_t seq) {
     uint32_t tick = (uint32_t)t->meta0;  /* meta0 used as tick for EVQ */
@@ -54,30 +58,38 @@ static void heap_sift_down(gmk_evq_entry_t *heap, uint32_t count, uint32_t idx) 
 int gmk_evq_init(gmk_evq_t *evq, uint32_t cap) {
     if (!evq || cap == 0) return -1;
 
+#ifdef GMK_FREESTANDING
+    evq->heap = (gmk_evq_entry_t *)boot_calloc(cap, sizeof(gmk_evq_entry_t));
+#else
     evq->heap = (gmk_evq_entry_t *)calloc(cap, sizeof(gmk_evq_entry_t));
+#endif
     if (!evq->heap) return -1;
 
     evq->count    = 0;
     evq->cap      = cap;
     evq->next_seq = 0;
-    pthread_mutex_init(&evq->lock, NULL);
+    gmk_lock_init(&evq->lock);
     return 0;
 }
 
 void gmk_evq_destroy(gmk_evq_t *evq) {
     if (!evq) return;
+#ifdef GMK_FREESTANDING
+    boot_free(evq->heap);
+#else
     free(evq->heap);
+#endif
     evq->heap = NULL;
-    pthread_mutex_destroy(&evq->lock);
+    gmk_lock_destroy(&evq->lock);
 }
 
 int gmk_evq_push(gmk_evq_t *evq, const gmk_task_t *task) {
     if (!evq || !task) return -1;
 
-    pthread_mutex_lock(&evq->lock);
+    gmk_lock_acquire(&evq->lock);
 
     if (evq->count >= evq->cap) {
-        pthread_mutex_unlock(&evq->lock);
+        gmk_lock_release(&evq->lock);
         return -1; /* full */
     }
 
@@ -89,24 +101,24 @@ int gmk_evq_push(gmk_evq_t *evq, const gmk_task_t *task) {
 
     heap_sift_up(evq->heap, idx);
 
-    pthread_mutex_unlock(&evq->lock);
+    gmk_lock_release(&evq->lock);
     return 0;
 }
 
 int gmk_evq_pop_due(gmk_evq_t *evq, uint32_t current_tick, gmk_task_t *task) {
     if (!evq || !task) return -1;
 
-    pthread_mutex_lock(&evq->lock);
+    gmk_lock_acquire(&evq->lock);
 
     if (evq->count == 0) {
-        pthread_mutex_unlock(&evq->lock);
+        gmk_lock_release(&evq->lock);
         return -1;
     }
 
     /* Check if the minimum element is due */
     uint32_t entry_tick = (uint32_t)(evq->heap[0].key >> 32);
     if (entry_tick > current_tick) {
-        pthread_mutex_unlock(&evq->lock);
+        gmk_lock_release(&evq->lock);
         return -1; /* not due yet */
     }
 
@@ -119,7 +131,7 @@ int gmk_evq_pop_due(gmk_evq_t *evq, uint32_t current_tick, gmk_task_t *task) {
         heap_sift_down(evq->heap, evq->count, 0);
     }
 
-    pthread_mutex_unlock(&evq->lock);
+    gmk_lock_release(&evq->lock);
     return 0;
 }
 

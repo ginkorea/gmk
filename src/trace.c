@@ -1,8 +1,12 @@
 /*
  * GMK/cpu — Per-tenant trace rings, level check, sampling
+ *
+ * Sampling uses fixed-point uint32_t threshold (no floating point).
  */
 #include "gmk/trace.h"
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 /* Fast xorshift PRNG */
 static inline uint32_t prng_next(uint32_t *state) {
@@ -50,10 +54,10 @@ int gmk_trace_init(gmk_trace_t *t, uint32_t n_tenants) {
         return -1;
 
     memset(t, 0, sizeof(*t));
-    t->level       = GMK_TRACE_WARN;
-    t->sample_rate = 1.0f;
-    t->prng_state  = 0xDEADBEEF;
-    t->n_tenants   = n_tenants;
+    t->level            = GMK_TRACE_WARN;
+    t->sample_threshold = UINT32_MAX;  /* 1.0 = trace all */
+    t->prng_state       = 0xDEADBEEF;
+    t->n_tenants        = n_tenants;
     atomic_init(&t->total_events, 0);
     atomic_init(&t->dropped_events, 0);
 
@@ -105,11 +109,10 @@ void gmk_trace_write(gmk_trace_t *t, uint16_t tenant, uint32_t ev_type,
     uint32_t required = ev_level(ev_type);
     if (required > t->level) return;
 
-    /* Sampling check (only for TRACE_ALL level events) */
-    if (t->level == GMK_TRACE_ALL && t->sample_rate < 1.0f) {
+    /* Sampling check (only for TRACE_ALL level events, fixed-point) */
+    if (t->level == GMK_TRACE_ALL && t->sample_threshold < UINT32_MAX) {
         uint32_t r = prng_next(&t->prng_state);
-        float val = (float)r / (float)UINT32_MAX;
-        if (val > t->sample_rate) return;
+        if (r > t->sample_threshold) return;
     }
 
     trace_emit(t, tenant, ev_type, task_type, arg0, arg1);
@@ -132,9 +135,16 @@ void gmk_trace_set_level(gmk_trace_t *t, uint32_t level) {
 
 void gmk_trace_set_sample_rate(gmk_trace_t *t, float rate) {
     if (!t) return;
-    if (rate < 0.0f) rate = 0.0f;
-    if (rate > 1.0f) rate = 1.0f;
-    t->sample_rate = rate;
+    if (rate <= 0.0f) {
+        t->sample_threshold = 0;
+    } else if (rate >= 1.0f) {
+        t->sample_threshold = UINT32_MAX;
+    } else {
+        /* Convert float 0.0..1.0 to uint32_t 0..UINT32_MAX.
+         * This is the only float operation, used only via the hosted API.
+         * The kernel path (sampling check) is pure integer. */
+        t->sample_threshold = (uint32_t)(rate * (double)UINT32_MAX);
+    }
 }
 
 uint64_t gmk_trace_total(const gmk_trace_t *t) {

@@ -2,7 +2,9 @@
  * GMK/cpu — gmk_boot/gmk_halt sequence
  */
 #include "gmk/boot.h"
+#ifndef GMK_FREESTANDING
 #include <string.h>
+#endif
 
 int gmk_boot(gmk_kernel_t *k, const gmk_boot_cfg_t *cfg,
              gmk_module_t **modules_arr, uint32_t n_modules) {
