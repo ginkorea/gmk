@@ -33,7 +33,7 @@ static void setup(void) {
     gmk_sched_init(&sched, 2);
     gmk_trace_init(&trace, 1);
     gmk_metrics_init(&metrics, 1);
-    gmk_chan_reg_init(&chan, &sched, &trace, &metrics);
+    gmk_chan_reg_init(&chan, &sched, NULL, &trace, &metrics);
     gmk_module_reg_init(&mr, &chan, &trace, &metrics);
 }
 

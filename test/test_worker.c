@@ -29,7 +29,7 @@ static void test_basic_dispatch(void) {
     GMK_ASSERT_EQ(gmk_trace_init(&trace, 1), 0, "trace init");
     GMK_ASSERT_EQ(gmk_metrics_init(&metrics, 1), 0, "metrics init");
     GMK_ASSERT_EQ(gmk_sched_init(&sched, 2), 0, "sched init");
-    GMK_ASSERT_EQ(gmk_chan_reg_init(&chan, &sched, &trace, &metrics), 0, "chan init");
+    GMK_ASSERT_EQ(gmk_chan_reg_init(&chan, &sched, &alloc, &trace, &metrics), 0, "chan init");
     GMK_ASSERT_EQ(gmk_module_reg_init(&modules, &chan, &trace, &metrics), 0, "mod init");
 
     /* Register handler */
@@ -108,7 +108,7 @@ static void test_yield_flow(void) {
     gmk_trace_init(&trace, 1);
     gmk_metrics_init(&metrics, 1);
     gmk_sched_init(&sched, 2);
-    gmk_chan_reg_init(&chan, &sched, &trace, &metrics);
+    gmk_chan_reg_init(&chan, &sched, &alloc, &trace, &metrics);
     gmk_module_reg_init(&modules, &chan, &trace, &metrics);
 
     gmk_handler_reg_t handlers[] = {

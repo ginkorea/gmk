@@ -75,6 +75,19 @@ void  *gmk_bump_alloc(gmk_bump_t *b, uint32_t size);
 void   gmk_bump_reset(gmk_bump_t *b);
 uint32_t gmk_bump_used(const gmk_bump_t *b);
 
+/* ── Payload refcount header (hidden before payload data) ────── */
+typedef struct {
+    _Atomic(uint32_t) refcount;
+    uint32_t          size;     /* payload data size (excl. header) */
+} gmk_payload_hdr_t;
+
+/* Allocate a refcounted payload (refcount=1). Returns pointer past header. */
+void  *gmk_payload_alloc(gmk_alloc_t *a, uint32_t size);
+/* Increment refcount. */
+void   gmk_payload_retain(void *payload);
+/* Decrement refcount. Frees when it reaches 0. Returns 1 if freed, 0 if still live. */
+int    gmk_payload_release(gmk_alloc_t *a, void *payload);
+
 /* ── Unified allocator ───────────────────────────────────────── */
 struct gmk_alloc {
     gmk_arena_t  arena;

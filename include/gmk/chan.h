@@ -12,6 +12,7 @@
 #include "types.h"
 #include "ring_mpmc.h"
 #include "sched.h"
+#include <pthread.h>
 
 /* ── Channel subscriber ──────────────────────────────────────── */
 typedef struct {
@@ -31,9 +32,10 @@ typedef struct {
     uint32_t          ring_cap;
     gmk_chan_sub_t     subs[GMK_MAX_CHAN_SUBS];
     uint32_t           n_subs;
-    bool               open;
+    _Atomic(bool)      open;      /* atomic: checked without lock on emit fast-path */
     _Atomic(uint64_t)  emit_count;
     _Atomic(uint64_t)  drop_count;
+    pthread_mutex_t    lock;      /* protects subs[], n_subs, open mutations */
 } gmk_chan_entry_t;
 
 /* ── Channel registry ────────────────────────────────────────── */
@@ -41,12 +43,14 @@ struct gmk_chan_reg {
     gmk_chan_entry_t  channels[GMK_MAX_CHANNELS];
     uint32_t          n_channels;
     gmk_sched_t      *sched;    /* for routing tasks to scheduler */
+    gmk_alloc_t      *alloc;    /* for payload refcount release   */
     gmk_trace_t      *trace;    /* for trace events */
     gmk_metrics_t    *metrics;  /* for metric updates */
 };
 
 int  gmk_chan_reg_init(gmk_chan_reg_t *cr, gmk_sched_t *sched,
-                       gmk_trace_t *trace, gmk_metrics_t *metrics);
+                       gmk_alloc_t *alloc, gmk_trace_t *trace,
+                       gmk_metrics_t *metrics);
 void gmk_chan_reg_destroy(gmk_chan_reg_t *cr);
 
 /* Open a channel. Returns channel ID or negative error. */

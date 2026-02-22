@@ -113,3 +113,39 @@ void gmk_bump_reset_all(gmk_alloc_t *a) {
     if (!a) return;
     gmk_bump_reset(&a->bump);
 }
+
+/* ── Payload refcounting ────────────────────────────────────── */
+
+void *gmk_payload_alloc(gmk_alloc_t *a, uint32_t size) {
+    if (!a || size == 0) return NULL;
+
+    uint32_t total = (uint32_t)sizeof(gmk_payload_hdr_t) + size;
+    void *mem = gmk_alloc(a, total);
+    if (!mem) return NULL;
+
+    gmk_payload_hdr_t *hdr = (gmk_payload_hdr_t *)mem;
+    atomic_init(&hdr->refcount, 1);
+    hdr->size = size;
+    return (uint8_t *)mem + sizeof(gmk_payload_hdr_t);
+}
+
+void gmk_payload_retain(void *payload) {
+    if (!payload) return;
+    gmk_payload_hdr_t *hdr = (gmk_payload_hdr_t *)
+        ((uint8_t *)payload - sizeof(gmk_payload_hdr_t));
+    gmk_atomic_add(&hdr->refcount, 1, memory_order_relaxed);
+}
+
+int gmk_payload_release(gmk_alloc_t *a, void *payload) {
+    if (!payload) return 0;
+    gmk_payload_hdr_t *hdr = (gmk_payload_hdr_t *)
+        ((uint8_t *)payload - sizeof(gmk_payload_hdr_t));
+    uint32_t old = atomic_fetch_sub_explicit(&hdr->refcount, 1,
+                                             memory_order_acq_rel);
+    if (old == 1) {
+        /* Last reference — free the backing allocation */
+        gmk_free(a, hdr, (uint32_t)sizeof(gmk_payload_hdr_t) + hdr->size);
+        return 1;
+    }
+    return 0;
+}

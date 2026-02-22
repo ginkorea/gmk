@@ -2,6 +2,7 @@
  * GMK/cpu — Worker thread loop (gather-dispatch-park)
  */
 #include "gmk/worker.h"
+#include "gmk/alloc.h"
 #include "gmk/trace.h"
 #include "gmk/metrics.h"
 #include <stdlib.h>
@@ -30,15 +31,20 @@ static void worker_dispatch_task(gmk_worker_t *w, gmk_task_t *task) {
 
     if (rc == GMK_OK) {
         gmk_atomic_add(&w->tasks_dispatched, 1, memory_order_relaxed);
+        /* Release refcounted payload — handler is done with it */
+        if ((task->flags & GMK_TF_PAYLOAD_RC) && task->payload_ptr)
+            gmk_payload_release(w->alloc, (void *)(uintptr_t)task->payload_ptr);
     } else if (rc == GMK_RETRY) {
-        /* Re-enqueue for retry */
+        /* Re-enqueue for retry — keep payload ref alive */
         _gmk_enqueue(w->sched, task, -1);
         if (w->metrics)
             gmk_metric_inc(w->metrics, task->tenant,
                           GMK_METRIC_TASKS_RETRIED, 1);
     } else {
-        /* Failure */
+        /* Failure — release refcounted payload */
         gmk_module_record_fail(w->modules, task->type);
+        if ((task->flags & GMK_TF_PAYLOAD_RC) && task->payload_ptr)
+            gmk_payload_release(w->alloc, (void *)(uintptr_t)task->payload_ptr);
         if (w->metrics)
             gmk_metric_inc(w->metrics, task->tenant,
                           GMK_METRIC_TASKS_FAILED, 1);

@@ -41,7 +41,7 @@ int gmk_boot(gmk_kernel_t *k, const gmk_boot_cfg_t *cfg,
         goto fail_sched;
 
     /* 5. Channel registry */
-    if (gmk_chan_reg_init(&k->chan, &k->sched, &k->trace, &k->metrics) != 0)
+    if (gmk_chan_reg_init(&k->chan, &k->sched, &k->alloc, &k->trace, &k->metrics) != 0)
         goto fail_chan;
 
     /* 6. Module registry */

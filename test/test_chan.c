@@ -16,7 +16,7 @@ static void setup(void) {
     gmk_sched_init(&sched, 4);
     gmk_trace_init(&trace, 1);
     gmk_metrics_init(&metrics, 1);
-    gmk_chan_reg_init(&cr, &sched, &trace, &metrics);
+    gmk_chan_reg_init(&cr, &sched, NULL, &trace, &metrics);
 }
 
 static void teardown(void) {

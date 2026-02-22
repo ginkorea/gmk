@@ -38,6 +38,7 @@
 #define GMK_TF_IDEMPOTENT      0x0008  /* bit 3 */
 #define GMK_TF_EMIT_TRACE      0x0010  /* bit 4 */
 #define GMK_TF_CHANNEL_MSG     0x0020  /* bit 5: delivered via channel */
+#define GMK_TF_PAYLOAD_RC      0x0040  /* bit 6: payload has refcount header */
 
 #define GMK_PRIORITY(flags)    ((flags) & GMK_TF_PRIORITY_MASK)
 #define GMK_SET_PRIORITY(f, p) (((f) & ~GMK_TF_PRIORITY_MASK) | ((p) & 0x3))
