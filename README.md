@@ -1,4 +1,4 @@
-# GGMK — Gompert Gompert GPU Microkernel
+# GGMK — Gompert GPU Microkernel
 
 A system of peer microkernels spanning GPU and CPU. The GPU kernel (GGMK/gpu) owns compute: scheduling, memory, channels, and module dispatch via persistent CUDA kernels. The CPU kernel (GGMK/cpu) owns peripherals: NIC, NVMe, DMA, and the GPU driver interface. Both kernels share the same architectural primitives — tasks, channels, modules, allocators, and observability. They communicate through cross-kernel channels over PCIe DMA. Neither is subordinate. Together they are GGMK.
 
