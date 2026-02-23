@@ -148,7 +148,7 @@ $(LIB): $(OBJS)
 
 # ── Test compilation ─────────────────────────────────────────
 $(BUILD)/test_%: $(TEST)/test_%.c $(LIB) | $(BUILD)
-	$(CC) $(CFLAGS) -I $(TEST) $< -L $(BUILD) -lgmk_cpu $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) -I $(TEST) $< -L $(BUILD) -lggmk_cpu $(LDFLAGS) -o $@
 
 # ── Run all tests ────────────────────────────────────────────
 test: $(TEST_BINS)
